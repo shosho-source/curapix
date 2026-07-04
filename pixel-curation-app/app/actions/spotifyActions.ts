@@ -50,3 +50,30 @@ export async function fetchSpotifyTrack(trackId: string) {
     return null;
   }
 }
+
+export async function processSpotifyLink(url: string) {
+  try {
+    // 1. Extract the Track ID from a standard Spotify share link
+    // Example: https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT?si=...
+    const trackRegex = /track\/([a-zA-Z0-9]+)/;
+    const match = url.match(trackRegex);
+
+    if (!match || !match[1]) {
+      return { success: false, error: 'Invalid Spotify track link. Make sure it is a song!' };
+    }
+
+    const trackId = match[1];
+
+    // 2. Fetch the metadata securely from our server
+    const trackData = await fetchSpotifyTrack(trackId);
+
+    if (!trackData) {
+       return { success: false, error: 'Could not fetch track details from Spotify.' };
+    }
+
+    return { success: true, data: trackData };
+  } catch (error) {
+    console.error("Error processing Spotify link:", error);
+    return { success: false, error: 'Failed to process link.' };
+  }
+}
