@@ -3,9 +3,12 @@
 
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { getOrFetchMedia } from './mediaActions';
 
-export async function addMediaToBlend(blendId: number, apiId: string, mediaType: 'movie' | 'song' | 'youtube') {
+export async function getBlendData(slug: string) {
+  // Slug format expected: "username1-username2"
+  const usernames = slug.split('-');
+  if (usernames.length !== 2) return null;
+
   const cookieStore = await cookies();
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,34 +16,56 @@ export async function addMediaToBlend(blendId: number, apiId: string, mediaType:
     { cookies: { get: (name) => cookieStore.get(name)?.value } }
   );
 
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error('Unauthorized');
+  // 1. Fetch both users
+  const { data: users } = await supabase
+    .from('users')
+    .select('id, username, avatar_url, theme_palette')
+    .in('username', usernames);
 
-  // 1. Verify the user is a member of this Blend
-  const { data: membership } = await supabase
-    .from('blend_members')
-    .select('*')
-    .eq('blend_id', blendId)
-    .eq('user_id', session.user.id)
-    .single();
+  if (!users || users.length !== 2) return null;
 
-  if (!membership) throw new Error('You do not have permission to add to this blend.');
+  const userA = users[0];
+  const userB = users[1];
 
-  // 2. Shield the API: Ensure the item is cached
-  await getOrFetchMedia(apiId, mediaType);
+  // 2. Fetch catalogs for both users
+  const { data: catalogs } = await supabase
+    .from('catalog_items')
+    .select(`
+      id,
+      user_id,
+      media_cache (api_id, title, thumbnail_url)
+    `)
+    .in('user_id', [userA.id, userB.id]);
 
-  // 3. Add to the Blend
-  const { error } = await supabase.from('blend_items').insert({
-    blend_id: blendId,
-    added_by: session.user.id,
-    media_type: mediaType,
-    api_id: apiId
-  });
+  if (!catalogs) return null;
 
-  if (error) {
-    console.error('Error adding to blend:', error);
-    return { success: false };
+  // 3. Process the Blend (Find overlaps and mix)
+  const itemsA = catalogs.filter(c => c.user_id === userA.id);
+  const itemsB = catalogs.filter(c => c.user_id === userB.id);
+
+  // Extract API IDs to find matches
+  const idsA = new Set(itemsA.map(i => Array.isArray(i.media_cache) ? i.media_cache[0]?.api_id : i.media_cache?.api_id));
+  const idsB = new Set(itemsB.map(i => Array.isArray(i.media_cache) ? i.media_cache[0]?.api_id : i.media_cache?.api_id));
+
+  const intersection = new Set([...idsA].filter(x => idsB.has(x)));
+  
+  // Calculate Vibe Match Percentage
+  const totalUnique = new Set([...idsA, ...idsB]).size;
+  const matchScore = totalUnique === 0 ? 0 : Math.round((intersection.size / totalUnique) * 100);
+
+  // Interleave the arrays for a mixed visual feed
+  const mixedCatalog = [];
+  const maxLength = Math.max(itemsA.length, itemsB.length);
+  for (let i = 0; i < maxLength; i++) {
+    if (itemsA[i]) mixedCatalog.push({ ...itemsA[i], source_user: userA.username });
+    if (itemsB[i]) mixedCatalog.push({ ...itemsB[i], source_user: userB.username });
   }
 
-  return { success: true };
+  return {
+    userA,
+    userB,
+    matchScore,
+    sharedCount: intersection.size,
+    mixedCatalog
+  };
 }

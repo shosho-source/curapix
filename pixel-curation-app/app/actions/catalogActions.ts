@@ -37,3 +37,23 @@ export async function saveMediaToCatalog(apiId: string, type: 'movie' | 'youtube
     return { success: false, error: 'Failed to save item.' };
   }
 }
+
+export async function completeOnboarding(data: { username: string, theme: any, genres: string[] }) {
+  'use server';
+  const supabase = createServerClient(/* ... your client setup ... */);
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (!user) return { success: false };
+
+  const { error } = await supabase
+    .from('users')
+    .update({
+      username: data.username,
+      theme_palette: data.theme,
+      genres: data.genres,
+      onboarding_completed: true
+    })
+    .eq('id', user.id);
+
+  return { success: !error };
+}
