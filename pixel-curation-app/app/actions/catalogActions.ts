@@ -38,9 +38,13 @@ export async function saveMediaToCatalog(apiId: string, type: 'movie' | 'youtube
   }
 }
 
-export async function completeOnboarding(data: { username: string, theme: any, genres: string[] }) {
-  'use server';
-  const supabase = createServerClient(/* ... your client setup ... */);
+export async function completeOnboarding(data: { username: string, theme: Record<string, string>, genres: string[] }) {
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { get: (name) => cookieStore.get(name)?.value } }
+  );
   const { data: { user } } = await supabase.auth.getUser();
   
   if (!user) return { success: false };

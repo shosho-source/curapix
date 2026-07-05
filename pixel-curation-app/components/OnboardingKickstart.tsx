@@ -7,36 +7,20 @@ import Papa from 'papaparse';
 import { UploadCloud, Music, ArrowRight } from 'lucide-react';
 import { processMovieBatch } from '../app/actions/importActions'; // We'll build this next
 
+type LetterboxdRow = { Name: string; Year: string };
+
 export default function OnboardingKickstart() {
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  // Handle Letterboxd CSV Drop
-  const onDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-    
-    const file = e.dataTransfer.files[0];
-    if (file && file.type === 'text/csv') {
-      parseAndUpload(file);
-    }
-  }, []);
-
-  const parseAndUpload = (file: File) => {
+  const parseAndUpload = useCallback((file: File) => {
     setIsProcessing(true);
-    Papa.parse(file, {
+    Papa.parse<LetterboxdRow>(file, {
       header: true,
       complete: async (results) => {
-        
-        // 1. DEFINE the expected row type
-        type LetterboxdRow = { Name: string; Year: string };
-        
-        // 2. CAST the raw results data to our strict type
-        const parsedData = results.data as LetterboxdRow[];
-        
         // Now TypeScript knows exactly what 'row' is
-        const movies = parsedData.filter((row) => row.Name).slice(0, 50); 
+        const movies = results.data.filter((row) => row.Name).slice(0, 50); 
         
         const batchSize = 10;
         for (let i = 0; i < movies.length; i += batchSize) {
@@ -49,7 +33,18 @@ export default function OnboardingKickstart() {
         window.location.href = '/dashboard'; 
       }
     });
-  };
+  }, []);
+
+  // Handle Letterboxd CSV Drop
+  const onDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const file = e.dataTransfer.files[0];
+    if (file && file.type === 'text/csv') {
+      parseAndUpload(file);
+    }
+  }, [parseAndUpload]);
 
   return (
     <div className="w-full max-w-md mx-auto space-y-6">
@@ -70,7 +65,7 @@ export default function OnboardingKickstart() {
       >
         <UploadCloud size={48} className={`mb-4 ${isDragging ? 'text-[var(--theme-primary)]' : 'text-zinc-500'}`} />
         <h3 className="text-xl font-bold text-white mb-1">Drop Letterboxd CSV</h3>
-        <p className="text-sm text-zinc-400">We'll instantly parse your watched list.</p>
+        <p className="text-sm text-zinc-400">We&apos;ll instantly parse your watched list.</p>
         
         {isProcessing && (
           <div className="absolute inset-0 bg-zinc-900/90 rounded-[28px] flex flex-col items-center justify-center">

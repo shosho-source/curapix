@@ -1,4 +1,4 @@
-// app/actions/mediaActions.ts
+// app/actions/mediaActions.tsx
 'use server';
 
 import { createServerClient } from '@supabase/ssr';
@@ -80,7 +80,46 @@ export async function getOrFetchMedia(apiId: string, type: 'movie' | 'youtube' |
   return fetchedData;
 }
 
-// ... (keep getTrendingMovies and getWatchProviders exactly as they are below this)
+interface Provider {
+  provider_id: number;
+  provider_name: string;
+  logo_path: string;
+}
+
+interface WatchData {
+  link: string;
+  flatrate: Provider[];
+  rent: Provider[];
+  buy: Provider[];
+}
+
+export async function getWatchProviders(tmdbId: string, region: string = 'US'): Promise<WatchData | null> {
+  try {
+    const res = await fetch(
+      `https://api.themoviedb.org/3/movie/${tmdbId}/watch/providers?api_key=${process.env.TMDB_API_KEY}`,
+      { next: { revalidate: 86400 } } // Provider lists barely change; cache for a day
+    );
+
+    if (!res.ok) throw new Error('TMDB watch/providers rejected');
+
+    const json = await res.json();
+    const regionData = json.results?.[region];
+
+    if (!regionData) {
+      return { link: '', flatrate: [], rent: [], buy: [] };
+    }
+
+    return {
+      link: regionData.link || '',
+      flatrate: regionData.flatrate || [],
+      rent: regionData.rent || [],
+      buy: regionData.buy || [],
+    };
+  } catch (error) {
+    console.error(`⚠️ Failed to fetch watch providers for ${tmdbId}:`, error);
+    return { link: '', flatrate: [], rent: [], buy: [] };
+  }
+}
 
 export async function getTrendingMovies() {
   try {
@@ -98,7 +137,8 @@ export async function getTrendingMovies() {
     
     const data = await res.json();
     
-    return data.results.map((movie: any) => ({
+    interface TmdbMovie { id: number; title: string; poster_path: string | null }
+    return (data.results as TmdbMovie[]).map((movie) => ({
       id: movie.id.toString(),
       title: movie.title,
       image: `https://image.tmdb.org/t/p/w780${movie.poster_path}`, 
